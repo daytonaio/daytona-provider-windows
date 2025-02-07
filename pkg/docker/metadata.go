@@ -26,6 +26,8 @@ func (d *DockerClient) GetWorkspaceProviderMetadata(w *models.Workspace) (string
 		return "", errors.New("container labels not found")
 	}
 
+	info.Config.Labels["remote-os"] = "windows"
+
 	metadata, err := json.Marshal(info.Config.Labels)
 	if err != nil {
 		return "", err

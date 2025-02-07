@@ -15,6 +15,7 @@ import (
 	"github.com/daytonaio/daytona/pkg/common"
 	"github.com/daytonaio/daytona/pkg/models"
 	"github.com/daytonaio/daytona/pkg/ssh"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -81,10 +82,12 @@ func (d *DockerClient) GetWorkspaceContainerName(workspace *models.Workspace) st
 func (d *DockerClient) GetWorkspaceVolumeName(workspace *models.Workspace) string {
 	return workspace.TargetId + "-" + workspace.Id
 }
-func (d *DockerClient) OpenWebUI(hostname *string, logWriter io.Writer) {
-	url := "http://localhost:8006"
+
+func (d *DockerClient) OpenWebUI(hostname *string, containerData types.ContainerJSON, logWriter io.Writer) {
+	forwardedToPort := containerData.NetworkSettings.Ports["8006/tcp"][0].HostPort
+	url := fmt.Sprintf("http://localhost:%s", forwardedToPort)
 	if hostname != nil {
-		url = fmt.Sprintf("http://%s:8006", *hostname)
+		url = fmt.Sprintf("http://%s:%s", *hostname, forwardedToPort)
 	}
 	var err error
 	switch runtime.GOOS {
@@ -99,7 +102,7 @@ func (d *DockerClient) OpenWebUI(hostname *string, logWriter io.Writer) {
 	}
 
 	if err != nil {
-		logWriter.Write([]byte(fmt.Sprintf("Windows is started visit %s\n", url)))
+		logWriter.Write([]byte(fmt.Sprintf("Windows have started. You can view desktop at %s\n", url)))
 	}
 
 }

@@ -9,13 +9,20 @@ import (
 	"io"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"golang.org/x/crypto/ssh"
 )
 
 func (d *DockerClient) WaitForWindowsBoot(containerID string, hostname *string) error {
-	addr := "localhost:10022"
+	c, err := d.apiClient.ContainerInspect(context.TODO(), containerID)
+	if err != nil {
+		return err
+	}
+	port := c.NetworkSettings.Ports["22/tcp"][0].HostPort
+
+	addr := fmt.Sprintf("localhost:%s", port)
 	if hostname != nil {
-		addr = fmt.Sprintf("%s:10022", *hostname)
+		addr = fmt.Sprintf("%s:%s", *hostname, port)
 	}
 
 	config := ssh.ClientConfig{
@@ -50,10 +57,11 @@ func (d *DockerClient) WaitForWindowsBoot(containerID string, hostname *string) 
 	return nil
 }
 
-func (d *DockerClient) GetSshClient(hostname *string) (*ssh.Client, error) {
-	addr := "localhost:10022"
+func (d *DockerClient) GetSshClient(hostname *string, containerData types.ContainerJSON) (*ssh.Client, error) {
+	port := containerData.NetworkSettings.Ports["22/tcp"][0].HostPort
+	addr := fmt.Sprintf("localhost:%s", port)
 	if hostname != nil {
-		addr = fmt.Sprintf("%s:10022", *hostname)
+		addr = fmt.Sprintf("%s:%s", *hostname, port)
 	}
 
 	config := ssh.ClientConfig{

@@ -7,14 +7,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/daytonaio/daytona/cmd/daytona/config"
 	"github.com/daytonaio/daytona/pkg/models"
 	"github.com/daytonaio/daytona/pkg/ports"
 	"github.com/daytonaio/daytona/pkg/ssh"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/go-connections/nat"
@@ -29,18 +27,22 @@ func (d *DockerClient) CreateWorkspace(opts *CreateWorkspaceOptions) error {
 	ctx := context.TODO()
 	mounts := []mount.Mount{}
 
+	cr := opts.ContainerRegistries.FindContainerRegistryByImageName("daytonaio/workspace-windows")
+	err := d.PullImage("daytonaio/workspace-windows", cr, opts.LogWriter)
+	if err != nil {
+		return err
+	}
+
 	var availablePort *uint16
 	portBindings := make(map[nat.Port][]nat.PortBinding)
+	p, err := ports.GetAvailableEphemeralPort()
+	if err != nil {
+		p = 10022
+	}
 	portBindings["22/tcp"] = []nat.PortBinding{
 		{
 			HostIP:   "0.0.0.0",
-			HostPort: "10022",
-		},
-	}
-	portBindings["2222/tcp"] = []nat.PortBinding{
-		{
-			HostIP:   "0.0.0.0",
-			HostPort: "2222",
+			HostPort: fmt.Sprintf("%d", p),
 		},
 	}
 
@@ -106,14 +108,14 @@ func (d *DockerClient) CreateWorkspace(opts *CreateWorkspaceOptions) error {
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
-
+	var containerData types.ContainerJSON
 	for {
-		c, err := d.apiClient.ContainerInspect(ctx, c.ID)
+		containerData, err = d.apiClient.ContainerInspect(ctx, c.ID)
 		if err != nil {
 			return fmt.Errorf("failed to inspect container when creating project: %w", err)
 		}
 
-		if c.State.Running {
+		if containerData.State.Running {
 			break
 		}
 
@@ -122,14 +124,14 @@ func (d *DockerClient) CreateWorkspace(opts *CreateWorkspaceOptions) error {
 
 	opts.LogWriter.Write([]byte("Installing Windows.....\n"))
 
-	d.OpenWebUI(d.targetOptions.RemoteHostname, opts.LogWriter)
+	d.OpenWebUI(d.targetOptions.RemoteHostname, containerData, opts.LogWriter)
 
 	err = d.WaitForWindowsBoot(c.ID, d.targetOptions.RemoteHostname)
 	if err != nil {
 		return fmt.Errorf("failed to wait for Windows to boot: %w", err)
 	}
 
-	sshClient, err := d.GetSshClient(d.targetOptions.RemoteHostname)
+	sshClient, err := d.GetSshClient(d.targetOptions.RemoteHostname, containerData)
 	if err != nil {
 		return fmt.Errorf("failed to get SSH client: %w", err)
 	}
@@ -183,7 +185,7 @@ func GetContainerCreateConfig(workspace *models.Workspace, toolboxApiHostPort *u
 
 	return &container.Config{
 		Hostname: workspace.Id,
-		Image:    "rutik7066/daytona-windows-container:latest",
+		Image:    "daytonaio/workspace-windows:latest",
 		Labels:   labels,
 		User:     "root",
 		Entrypoint: []string{

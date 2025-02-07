@@ -23,7 +23,7 @@ func (d *DockerClient) StartWorkspace(opts *CreateWorkspaceOptions, daytonaDownl
 			return fmt.Errorf("failed to start container: %w", err)
 		}
 
-		d.OpenWebUI(d.targetOptions.RemoteHostname, opts.LogWriter)
+		d.OpenWebUI(d.targetOptions.RemoteHostname, c,opts.LogWriter)
 
 		err = d.WaitForWindowsBoot(c.ID, d.targetOptions.RemoteHostname)
 		if err != nil {
